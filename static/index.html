@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="An interactive orbit of recent MSCD theses from KiltHub." />
+    <title>MSCD Thesis Orbit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <canvas id="orbitCanvas" aria-label="Interactive thesis orbit visualization"></canvas>
+
+      <header class="top-bar">
+        <a class="wordmark" href="/" aria-label="Reset visualization">
+          <span class="wordmark-mark">◌</span>
+          <span>MSCD<br /><strong>THESIS ORBIT</strong></span>
+        </a>
+        <label class="search-box">
+          <span class="sr-only">Search theses</span>
+          <input id="searchInput" type="search" placeholder="SEARCH THE ARCHIVE" autocomplete="off" />
+          <span aria-hidden="true">⌕</span>
+        </label>
+        <button class="outline-button" id="openAddButton" type="button">+ ADD THESIS</button>
+      </header>
+
+      <aside class="control-panel" aria-label="Visualization controls">
+        <p class="eyebrow">KILTHUB / MSCD</p>
+        <h1>RESEARCH<br />IN ORBIT</h1>
+        <p class="panel-copy" id="recordCount">Loading collection...</p>
+
+        <label>
+          <span>ARRANGE BY</span>
+          <select id="layoutSelect">
+            <option value="category">Category</option>
+            <option value="year">Year</option>
+            <option value="pages">Page count</option>
+            <option value="words">Word count</option>
+          </select>
+        </label>
+
+        <label>
+          <span>POINT SIZE</span>
+          <select id="sizeSelect">
+            <option value="equal">Equal</option>
+            <option value="pages">Page count</option>
+            <option value="words">Word count</option>
+          </select>
+        </label>
+
+        <label>
+          <span>CATEGORY</span>
+          <select id="categoryFilter"><option value="">All categories</option></select>
+        </label>
+
+        <div class="range-block">
+          <span>YEAR</span>
+          <div class="range-row">
+            <input id="yearFilter" type="number" inputmode="numeric" placeholder="Any" min="2000" max="2100" />
+          </div>
+        </div>
+
+        <div class="range-block">
+          <span>PAGES</span>
+          <div class="range-row">
+            <input id="pageMin" type="number" inputmode="numeric" placeholder="Min" min="0" />
+            <input id="pageMax" type="number" inputmode="numeric" placeholder="Max" min="0" />
+          </div>
+        </div>
+
+        <div class="range-block">
+          <span>WORDS</span>
+          <div class="range-row">
+            <input id="wordMin" type="number" inputmode="numeric" placeholder="Min" min="0" />
+            <input id="wordMax" type="number" inputmode="numeric" placeholder="Max" min="0" />
+          </div>
+        </div>
+
+        <button class="text-button" id="resetFilters" type="button">RESET FILTERS ↺</button>
+      </aside>
+
+      <section class="visual-legend" aria-label="Legend">
+        <p><span class="legend-dot"></span>THESIS NODE</p>
+        <p><span class="legend-line"></span>SHARED THEME</p>
+        <p class="legend-tip">DRAG TO ORBIT · SCROLL TO ZOOM · SELECT A NODE</p>
+      </section>
+
+      <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+      <aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Selected thesis details">
+        <button class="panel-close" id="closeDetailButton" type="button" aria-label="Close details">×</button>
+        <div class="detail-image-wrap"><img id="detailImage" alt="" /></div>
+        <p class="eyebrow" id="detailCategory"></p>
+        <h2 id="detailTitle"></h2>
+        <p class="byline" id="detailByline"></p>
+        <dl class="metrics">
+          <div><dt>PAGES</dt><dd id="detailPages">—</dd></div>
+          <div><dt>WORDS</dt><dd id="detailWords">—</dd></div>
+          <div><dt>YEAR</dt><dd id="detailYear">—</dd></div>
+        </dl>
+        <section>
+          <h3>AI SUMMARY</h3>
+          <p id="detailSummary"></p>
+        </section>
+        <section>
+          <h3>KEYWORDS</h3>
+          <p class="keywords" id="detailKeywords"></p>
+        </section>
+        <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noreferrer">OPEN IN KILTHUB ↗</a>
+        <div class="detail-actions">
+          <button class="outline-button" id="editButton" type="button">EDIT</button>
+          <button class="danger-button" id="deleteButton" type="button">DELETE</button>
+        </div>
+      </aside>
+
+      <dialog id="thesisDialog">
+        <form id="thesisForm" method="dialog">
+          <div class="dialog-heading">
+            <p class="eyebrow" id="dialogMode">NEW RECORD</p>
+            <button class="panel-close" type="button" id="closeDialogButton" aria-label="Close form">×</button>
+          </div>
+          <h2 id="dialogTitle">Add a thesis</h2>
+          <div class="form-grid">
+            <label class="full"><span>TITLE *</span><input name="title" required /></label>
+            <label><span>AUTHOR</span><input name="author" /></label>
+            <label><span>YEAR</span><input name="year" type="number" min="1900" max="2100" /></label>
+            <label><span>CATEGORY</span><input name="category" placeholder="e.g. AI + Generative Design" /></label>
+            <label><span>KEYWORDS</span><input name="keywords" placeholder="comma-separated" /></label>
+            <label><span>PAGES</span><input name="page_count" type="number" min="0" /></label>
+            <label><span>WORDS</span><input name="word_count" type="number" min="0" /></label>
+            <label class="full"><span>KILTHUB / SOURCE URL</span><input name="source_url" type="url" /></label>
+            <label class="full"><span>IMAGE URL</span><input name="image_url" type="url" /></label>
+            <label class="full"><span>AI SUMMARY</span><textarea name="ai_summary" rows="4"></textarea></label>
+            <label class="full"><span>ORIGINAL ABSTRACT</span><textarea name="source_abstract" rows="4"></textarea></label>
+          </div>
+          <p class="form-error" id="formError" role="alert"></p>
+          <div class="form-actions">
+            <button class="outline-button" id="cancelButton" type="button">CANCEL</button>
+            <button class="primary-button" type="submit">SAVE RECORD</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+tmp/
+data/theses.db
+data/pdf-cache/
+data/image-cache/
+.DS_Store
