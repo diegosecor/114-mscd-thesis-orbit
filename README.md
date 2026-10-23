@@ -25,23 +25,9 @@ These queries use different words from the retrieved thesis titles, so keyword s
 
 The app uses the meaning of the text, not only exact words. These examples should also be shown in the project video.
 
-## Technical documentation
+## Interface notes
 
-### Research constellations and code notes
-
-Rendering reuses a full-resolution connection layer while hovering, caches up to 256 device-resolution thumbnail appearances, and coalesces drag/zoom updates into animation frames. All records, relationships, widths, and image detail remain available; no reduced-detail interaction mode is used. Caches invalidate when their source data or appearance changes.
-
-Scroll over the cloud to zoom proportionally from 0.25× to 8×; scrolling the sidebar still scrolls its controls. High zoom intentionally moves outer nodes beyond the viewport.
-
-Under **CONNECTIONS**, click a relationship name to open its width slider directly below that row (25–250% of the default). Checkboxes independently toggle visibility. **Reset line widths** restores every relationship type, including the existing 20% reduction for dotted lines. Width preferences apply for the current page session and do not change semantic scores, filters, or camera framing.
-
-The small color square in the same inline menu opens the browser's compact RGB color picker. A chosen color overrides only that relationship type; node/category colors are unchanged, and the legend sample updates. Original per-year/per-category line palettes remain in use until overridden. **Reset filters** also restores original line colors and legend labels, without changing custom widths. Reloading restores the original palettes too. The width-reset button affects widths only.
-
-The bottom-right legend explains each relationship. Posting-year links use blue/teal dash–dot strokes; category/advisor links use dots. Category links become solid when specific keywords also match; keyword links have their own pink solid lane. Semantic links appear on selection and remain violet/solid, with thickness encoding similarity within that type.
-
-**Research Constellations** groups full-dimensional thesis profiles using deterministic spherical k-means (up to seven exploratory groups). Labels are extracted title terms, not official categories. Filters retain full-corpus group assignments and update visible counts and median lengths. **Topic × Length** keeps those groups and encodes the selected page/word metric in point size and vertical position; longer documents sit higher in the initial orientation. Missing counts are excluded from medians and placed below the measured range. Rotation changes the screen orientation, not the metric.
-
-The project includes English inline explanations and a [code guide](CODE_GUIDE.md) describing each module, data flow, and limitations.
+The 3D orbit can be organized by semantic topic, advisor, category, year, pages, or words. Selecting a thesis shows its semantic neighbors; line thickness represents similarity. The sidebar includes filters, range sliders, line controls, zoom, and reset buttons. A short [code guide](CODE_GUIDE.md) explains the modules and data flow.
 
 ### Setup
 
