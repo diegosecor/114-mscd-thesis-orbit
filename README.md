@@ -4,26 +4,26 @@
 
 ## 1. Purpose
 
-Understand the overall research landscape of Carnegie Mellon's MSCD — Master of Science in Computational Design theses: their topics, connections, and differences in document length. The interactive 3D cloud combines page and word counts with thematic relationships, using a white-background, violet-accented aesthetic inspired by 1980s–1990s CAD graphics. Length is not a measure of research quality, difficulty, or ambition.
+This app shows the research landscape of MSCD — Master of Science in Computational Design theses as a 3D orbit. I chose this idea because I just started the master's program and have many questions about the thesis path: how long the documents are, what they study, and how much I may need to explain. I had already seen the online list of theses, so I collected its information into a visual tool.
 
 ## 2. Data
 
-The initial collection contains 86 public theses from [KiltHub](https://kilthub.cmu.edu/). Original abstracts form 348 passages of up to 70 words, with up to 12 words of overlap and the title as context. Metadata includes author, posting year, advisors, category, keywords, source links, and available images and metrics. Full PDFs supply figures and counts, not semantic search content. Word counts are approximate; posting year is not necessarily graduation year.
+The data comes from the public [KiltHub MSCD collection](https://kilthub.cmu.edu/). One item is one thesis. The app currently has 86 theses. Each thesis has an abstract, title, author, year, advisors, category, keywords, page count, word count, image, and source link. For semantic search, the abstracts are split into 348 short passages of up to 70 words, with a small overlap between passages. The raw PDFs and model files are not committed; the scripts download the public records and create the local database again.
 
 ## 3. Adding and exploring
 
-Use **+ ADD THESIS** to save a thesis with its abstract or description; it becomes searchable immediately. Search by meaning, select a thesis to inspect its matching passage and ranked neighbors, or organize by meaning, advisor, category, year, pages, or words. Range filters and point sizes help compare document lengths. Semantic line thickness represents cosine similarity, not confidence. Metadata links remain separate from semantic links.
+Use **+ ADD THESIS** to add a title and abstract or description; it becomes searchable immediately. Search by exact words or meaning, select a thesis to see semantic neighbors, or organize by topic, advisor, category, year, pages, or words. Filters help compare document scope and length.
 
 ## 4. Semantic examples
 
-These English queries were tested against the initial collection:
+These queries use different words from the retrieved thesis titles, so keyword search could miss them:
 
-| Query | First result |
-| --- | --- |
-| `an automated arm assembling timber` | *Responsive Robotic Assembly with Heterogeneous Raw Wood* |
-| `objects that bend and change their shape` | *Robotic Metamaterials: An Integrated Modular Approach for Users to Create Robotic Applications Hands-on* |
+| Query | Retrieved item | Why keyword search could miss it |
+| --- | --- | --- |
+| `an automated arm assembling timber` | *Responsive Robotic Assembly with Heterogeneous Raw Wood* | The query uses “arm,” “assembling,” and “timber,” while the title uses “robotic,” “assembly,” and “wood.” |
+| `objects that bend and change their shape` | *Robotic Metamaterials: An Integrated Modular Approach for Users to Create Robotic Applications Hands-on* | The query describes changing objects, while the title uses “metamaterials” and “robotic applications.” |
 
-These demonstrate paraphrased retrieval, but before submission the student must choose and explain two examples meeting the stricter assignment test: no important shared words with the retrieved text, and why keyword search would miss the intended match. A missing exact phrase alone does not prove that test. Demonstrate at least one qualifying example in the video.
+The app uses the meaning of the text, not only exact words. These examples should also be shown in the project video.
 
 ## Technical documentation
 
@@ -74,6 +74,12 @@ ChromaDB 1.5.9 persists passage vectors and averaged thesis profiles in `data/ch
 The map uses a 3D PCA projection preserving about 21% of variation in this build, so visual distance is approximate. Recommendations use original vectors. Abstract similarity does not fully describe research scope. Advisor grouping uses the first listed advisor; filtering includes co-advisors.
 
 Do not commit PDFs, model caches, or generated databases. The commands above rebuild the collection from the public source; the importer implements the MSCD — Master of Science in Computational Design search filter.
+
+### AI use and sources
+
+AI helped me plan the data structure, write and debug code, create the embedding workflow, and improve the documentation. I checked the thesis information against the public source records. Important prompts and development notes are in [`prompt_log.md`](prompt_log.md).
+
+Sources: [KiltHub](https://kilthub.cmu.edu/), [ChromaDB documentation](https://docs.trychroma.com/), and [FastEmbed documentation](https://qdrant.github.io/fastembed/).
 
 ### Verification
 
