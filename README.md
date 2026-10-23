@@ -64,6 +64,13 @@ Open **http://127.0.0.1:8000**. Enrichment fetches public PDF figures, metrics, 
 
 ChromaDB 1.5.9 persists passage vectors and averaged thesis profiles in `data/chroma_store/`. FastEmbed 0.9.0 runs `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` locally (384 dimensions). The first build downloads weights into `data/model-cache/`; no API key is required. SQLite stores editable metadata in `data/theses.db`. Adding, editing, and deleting records updates their vectors.
 
+### Role of each language
+
+- **Python** runs the local server, reads and updates the SQLite database, imports and enriches thesis records, generates embeddings, performs semantic retrieval, and exposes the API used by the interface.
+- **JavaScript** runs in the browser and controls the interactive 3D orbit, canvas rendering, filters, search, layouts, semantic connections, sliders, zoom, and thesis selection. The project uses JavaScript, not Java.
+- **CSS** defines the visual system: typography, spacing, responsive panels, controls, thumbnails, legends, line styles, and the white CAD-inspired interface.
+- **HTML** provides the structure and accessible controls: the search field, sidebar, filters, connection settings, legend, detail panel, and canvas container that JavaScript renders into.
+
 The map uses a 3D PCA projection preserving about 21% of variation in this build, so visual distance is approximate. Recommendations use original vectors. Abstract similarity does not fully describe research scope. Advisor grouping uses the first listed advisor; filtering includes co-advisors.
 
 Do not commit PDFs, model caches, or generated databases. The commands above rebuild the collection from the public source; the importer implements the MSCD — Master of Science in Computational Design search filter.
