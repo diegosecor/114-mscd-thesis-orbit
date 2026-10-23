@@ -7,6 +7,7 @@ Then visit: http://localhost:8000
 from __future__ import annotations
 
 import json
+from advisors import advisor_names
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -38,9 +39,12 @@ EDITABLE_FIELDS = {
     "pdf_url",
     "image_url",
     "image_source",
+    "advisors",
+    "advisor_source",
 }
 
 
+# Open the local metadata database and expose rows as named fields.
 def get_connection() -> sqlite3.Connection:
     DATA_DIR.mkdir(exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
@@ -62,6 +66,7 @@ def database():
         connection.close()
 
 
+# Create or migrate catalogue fields without discarding existing thesis records.
 def init_db() -> None:
     with database() as connection:
         connection.execute(
@@ -69,6 +74,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS theses (
                 id INTEGER PRIMARY KEY,
                 source_id INTEGER UNIQUE,
+                in_source_search INTEGER NOT NULL DEFAULT 1,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL DEFAULT '',
                 published_date TEXT NOT NULL DEFAULT '',
@@ -88,16 +94,43 @@ def init_db() -> None:
             )
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(theses)")}
+        if "in_source_search" not in columns:
+            connection.execute(
+                "ALTER TABLE theses ADD COLUMN in_source_search INTEGER NOT NULL DEFAULT 1"
+            )
+        for field in ("advisors", "advisor_source"):
+            if field not in columns:
+                connection.execute(f"ALTER TABLE theses ADD COLUMN {field} TEXT NOT NULL DEFAULT ''")
 
 
+# Use UTC timestamps so records are portable between machines.
 def current_time() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+# Expose published metadata plus canonical advisor names for grouping.
 def as_record(row: sqlite3.Row) -> dict:
-    return dict(row)
+    record = dict(row)
+    record["advisor_names"] = advisor_names(record.get("advisors", ""))
+    return record
 
 
+# Lazily load the persistent vector store and reconcile visible catalogue records.
+def semantic_store(*, synchronize: bool = True):
+    from semantic import get_index
+
+    index = get_index(DATA_DIR)
+    if synchronize:
+        with database() as connection:
+            records = [as_record(row) for row in connection.execute(
+                "SELECT * FROM theses WHERE in_source_search = 1 OR source_id IS NULL"
+            )]
+        index.synchronize(records)
+    return index
+
+
+# Whitelist editable fields and validate numbers before building parameterized SQL.
 def clean_payload(payload: dict, *, creating: bool) -> dict:
     clean: dict = {}
     for field in EDITABLE_FIELDS:
@@ -124,12 +157,15 @@ def clean_payload(payload: dict, *, creating: bool) -> dict:
 
 
 class OrbitRequestHandler(SimpleHTTPRequestHandler):
+    # Serve only the project's static directory, not arbitrary workspace files.
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
+    # Write local request diagnostics to the server console.
     def log_message(self, format: str, *args) -> None:
         print(f"[{self.log_date_time_string()}] {format % args}")
 
+    # Return UTF-8 JSON with explicit size and no stale API caching.
     def send_json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -139,9 +175,11 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    # Use the same JSON error shape for validation and service failures.
     def send_error_json(self, message: str, status: HTTPStatus) -> None:
         self.send_json({"error": message}, status)
 
+    # Read a JSON object from the HTTP request and reject malformed bodies.
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
@@ -154,6 +192,7 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
             raise ValueError("Request body must be a JSON object.")
         return data
 
+    # Dispatch catalogue, statistics, semantic endpoints, or static browser assets.
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/theses":
@@ -162,10 +201,37 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/stats":
             self.get_stats()
             return
+        if parsed.path.startswith("/api/semantic/"):
+            self.semantic_request(parsed.path, parse_qs(parsed.query))
+            return
         if parsed.path == "/":
             self.path = "/index.html"
         super().do_GET()
 
+    # Validate semantic query parameters and return explicit errors, not fake matches.
+    def semantic_request(self, path: str, query: dict) -> None:
+        try:
+            index = semantic_store()
+            if path == "/api/semantic/map":
+                self.send_json(index.map())
+            elif path == "/api/semantic/neighbors":
+                thesis_id = int(query.get("id", [""])[0])
+                k = max(1, min(20, int(query.get("k", [8])[0])))
+                minimum = float(query.get("minimum", [0.35])[0])
+                if not 0 <= minimum <= 1:
+                    raise ValueError("Minimum similarity must be between 0 and 1.")
+                ids = [int(value) for value in query["ids"][0].split(",") if value] if "ids" in query else None
+                neighbors = index.neighbors(thesis_id, ids=ids, k=k, minimum=minimum)
+                self.send_json({"id": thesis_id, "neighbors": neighbors, "metric": "cosine similarity"})
+            else:
+                self.send_error_json("Not found.", HTTPStatus.NOT_FOUND)
+        except (ValueError, KeyError) as error:
+            self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
+        except Exception as error:
+            print(f"Semantic index error: {error!r}", flush=True)
+            self.send_error_json("The semantic index is unavailable. Check the server and model download.", HTTPStatus.SERVICE_UNAVAILABLE)
+
+    # Apply exact metadata filters before optional semantic ranking of eligible records.
     def list_theses(self, query: dict) -> None:
         clauses: list[str] = []
         values: list[object] = []
@@ -187,7 +253,16 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
                 return
             clauses.append("year = ?")
             values.append(parsed_year)
-        if search:
+        try:
+            for field, operator in (("year_min", ">="), ("year_max", "<=")):
+                value = one(field)
+                if value:
+                    clauses.append(f"year {operator} ?")
+                    values.append(int(value))
+        except ValueError:
+            self.send_error_json("Year range must contain whole numbers.", HTTPStatus.BAD_REQUEST)
+            return
+        if search and one("mode") != "semantic":
             clauses.append("(title LIKE ? OR author LIKE ? OR keywords LIKE ? OR ai_summary LIKE ?)")
             values.extend([f"%{search}%"] * 4)
 
@@ -202,23 +277,65 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
             self.send_error_json("Numeric filters must contain whole numbers.", HTTPStatus.BAD_REQUEST)
             return
 
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        clauses.insert(0, "(in_source_search = 1 OR source_id IS NULL)")
+        where = f"WHERE {' AND '.join(clauses)}"
         sql = f"SELECT * FROM theses {where} ORDER BY published_date DESC, title COLLATE NOCASE"
         with database() as connection:
             records = [as_record(row) for row in connection.execute(sql, values)]
+        if one("advisor"):
+            records = [record for record in records if one("advisor") in record["advisor_names"]]
+        if search and one("mode") == "semantic":
+            try:
+                matches = semantic_store().search(search[:2000], ids=[item["id"] for item in records])
+                by_id = {record["id"]: record for record in records}
+                records = [{**by_id[match["id"]], "semantic_similarity": match["similarity"],
+                            "semantic_excerpt": match["excerpt"], "semantic_passage": match["passage"],
+                            "semantic_source": match["source"]} for match in matches]
+            except Exception as error:
+                print(f"Semantic search error: {error!r}", flush=True)
+                self.send_error_json("Semantic search is unavailable. Check the server and model download.", HTTPStatus.SERVICE_UNAVAILABLE)
+                return
         self.send_json({"theses": records})
 
+    # Compute filter bounds and advisor counts from the visible catalogue.
     def get_stats(self) -> None:
         with database() as connection:
-            total = connection.execute("SELECT COUNT(*) FROM theses").fetchone()[0]
+            total = connection.execute(
+                "SELECT COUNT(*) FROM theses WHERE in_source_search = 1 OR source_id IS NULL"
+            ).fetchone()[0]
             categories = [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT category, COUNT(*) AS count FROM theses GROUP BY category ORDER BY count DESC, category"
+                    "SELECT category, COUNT(*) AS count FROM theses "
+                    "WHERE in_source_search = 1 OR source_id IS NULL "
+                    "GROUP BY category ORDER BY count DESC, category"
                 )
             ]
-        self.send_json({"total": total, "categories": categories})
+            year_range = connection.execute(
+                "SELECT MIN(year), MAX(year) FROM theses "
+                "WHERE year IS NOT NULL AND (in_source_search = 1 OR source_id IS NULL)"
+            ).fetchone()
+            metric_ranges = connection.execute(
+                "SELECT MIN(page_count), MAX(page_count), MIN(word_count), MAX(word_count) FROM theses "
+                "WHERE in_source_search = 1 OR source_id IS NULL"
+            ).fetchone()
+            advisors: dict[str, int] = {}
+            for row in connection.execute("SELECT * FROM theses WHERE in_source_search = 1 OR source_id IS NULL"):
+                for advisor in as_record(row)["advisor_names"]:
+                    advisors[advisor] = advisors.get(advisor, 0) + 1
+        self.send_json({
+            "total": total,
+            "categories": categories,
+            "year_min": year_range[0],
+            "year_max": year_range[1],
+            "page_min": metric_ranges[0],
+            "page_max": metric_ranges[1],
+            "word_min": metric_ranges[2],
+            "word_max": metric_ranges[3],
+            "advisors": [{"name": name, "count": count} for name, count in sorted(advisors.items(), key=lambda pair: (-pair[1], pair[0]))],
+        })
 
+    # Insert metadata and embed the record before reporting a successful addition.
     def do_POST(self) -> None:
         if urlparse(self.path).path != "/api/theses":
             self.send_error_json("Not found.", HTTPStatus.NOT_FOUND)
@@ -238,8 +355,15 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
                 f"INSERT INTO theses ({', '.join(columns)}) VALUES ({placeholders})", values
             )
             row = connection.execute("SELECT * FROM theses WHERE id = ?", (cursor.lastrowid,)).fetchone()
+            try:
+                semantic_store(synchronize=False).upsert(as_record(row))
+            except Exception as error:
+                connection.rollback()
+                self.send_error_json(f"The record could not be embedded and was not saved: {error}", HTTPStatus.SERVICE_UNAVAILABLE)
+                return
         self.send_json(as_record(row), HTTPStatus.CREATED)
 
+    # Validate edits and refresh vectors; roll back metadata on embedding failure.
     def do_PUT(self) -> None:
         record_id = self.path_id()
         if record_id is None:
@@ -269,19 +393,33 @@ class OrbitRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error_json("Thesis not found.", HTTPStatus.NOT_FOUND)
                 return
             row = connection.execute("SELECT * FROM theses WHERE id = ?", (record_id,)).fetchone()
+            try:
+                semantic_store(synchronize=False).upsert(as_record(row))
+            except Exception as error:
+                connection.rollback()
+                self.send_error_json(f"The changes could not be embedded and were not saved: {error}", HTTPStatus.SERVICE_UNAVAILABLE)
+                return
         self.send_json(as_record(row))
 
+    # Remove the requested record and its vectors after the browser's confirmation.
     def do_DELETE(self) -> None:
         record_id = self.path_id()
         if record_id is None:
             return
         with database() as connection:
             cursor = connection.execute("DELETE FROM theses WHERE id = ?", (record_id,))
-        if cursor.rowcount == 0:
-            self.send_error_json("Thesis not found.", HTTPStatus.NOT_FOUND)
-            return
+            if cursor.rowcount == 0:
+                self.send_error_json("Thesis not found.", HTTPStatus.NOT_FOUND)
+                return
+            try:
+                semantic_store(synchronize=False).remove(record_id)
+            except Exception as error:
+                connection.rollback()
+                self.send_error_json(f"The vector index could not be updated: {error}", HTTPStatus.SERVICE_UNAVAILABLE)
+                return
         self.send_json({"deleted": record_id})
 
+    # Accept only a numeric ID on the documented thesis resource path.
     def path_id(self) -> int | None:
         parts = urlparse(self.path).path.strip("/").split("/")
         if len(parts) != 3 or parts[:2] != ["api", "theses"]:

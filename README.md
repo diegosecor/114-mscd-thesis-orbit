@@ -1,78 +1,78 @@
-# MSCD Thesis Orbit
+# MSCD — Master of Science in Computational Design Thesis Orbit
 
-MSCD Thesis Orbit is a local web app for exploring the 30 most recent theses in Carnegie Mellon University's Master of Science in Computational Design KiltHub collection. It turns a catalogue of research documents into an interactive 3D orbit: each thesis is a node, the node colour represents a research category, its size can represent page or word count, and fine dotted lines indicate related work.
+![MSCD Thesis Orbit overview](A1.png)
 
-I chose this project because I wanted a more visual way to discover the range of research coming out of MSCD. The interface is deliberately inspired by late-1980s and early-1990s CAD drawings: white paper, technical grid lines, and bright violet accents.
+## 1. Purpose
 
-## Features
+Understand the overall research landscape of Carnegie Mellon's MSCD — Master of Science in Computational Design theses: their topics, connections, and differences in document length. The interactive 3D cloud combines page and word counts with thematic relationships, using a white-background, violet-accented aesthetic inspired by 1980s–1990s CAD graphics. Length is not a measure of research quality, difficulty, or ambition.
 
-- SQLite database with the 30 newest theses from the public MSCD KiltHub collection.
-- Interactive 3D-style canvas: drag to orbit, scroll to zoom, hover to inspect, and select a node for details.
-- Filters by category, year, page count, word count, and search terms.
-- Create, read, update, and delete thesis records through the interface.
-- Each thesis stores its source abstract, editable AI summary, KiltHub link, and preview image URL.
-- An import script that can calculate document page and word counts from the public PDFs. It removes temporary PDF downloads by default.
+## 2. Data
 
-## Database schema
+The initial collection contains 86 public theses from [KiltHub](https://kilthub.cmu.edu/). Original abstracts form 348 passages of up to 70 words, with up to 12 words of overlap and the title as context. Metadata includes author, posting year, advisors, category, keywords, source links, and available images and metrics. Full PDFs supply figures and counts, not semantic search content. Word counts are approximate; posting year is not necessarily graduation year.
 
-The database is created at `data/theses.db` on first run. It has one table named `theses`.
+## 3. Adding and exploring
 
-| Column | Type | Purpose |
-| --- | --- | --- |
-| `id` | INTEGER | Local primary key for each thesis record. |
-| `source_id` | INTEGER | Unique KiltHub/Figshare record id. |
-| `title` | TEXT | Thesis title. |
-| `author` | TEXT | Thesis author or authors. |
-| `published_date` | TEXT | KiltHub posting date. |
-| `year` | INTEGER | Posting year used by the year filter. |
-| `category` | TEXT | Editable thematic group used in the orbit. |
-| `keywords` | TEXT | Comma-separated tags used to reveal connections. |
-| `source_abstract` | TEXT | Original abstract from KiltHub. |
-| `ai_summary` | TEXT | Short AI-assisted summary, editable before use. |
-| `page_count` | INTEGER | Number of PDF pages. |
-| `word_count` | INTEGER | Approximate extractable words in the PDF. |
-| `source_url` | TEXT | Link to the KiltHub record. |
-| `pdf_url` | TEXT | Direct public PDF source. |
-| `image_url` | TEXT | Preview image or manually chosen project image. |
-| `image_source` | TEXT | Where the image was selected from. |
+Use **+ ADD THESIS** to save a thesis with its abstract or description; it becomes searchable immediately. Search by meaning, select a thesis to inspect its matching passage and ranked neighbors, or organize by meaning, advisor, category, year, pages, or words. Range filters and point sizes help compare document lengths. Semantic line thickness represents cosine similarity, not confidence. Metadata links remain separate from semantic links.
 
-## Run locally
+## 4. Semantic examples
 
-This project uses Python's built-in `sqlite3` and HTTP server. Python 3.11+ is recommended.
+These English queries were tested against the initial collection:
+
+| Query | First result |
+| --- | --- |
+| `an automated arm assembling timber` | *Responsive Robotic Assembly with Heterogeneous Raw Wood* |
+| `objects that bend and change their shape` | *Robotic Metamaterials: An Integrated Modular Approach for Users to Create Robotic Applications Hands-on* |
+
+These demonstrate paraphrased retrieval, but before submission the student must choose and explain two examples meeting the stricter assignment test: no important shared words with the retrieved text, and why keyword search would miss the intended match. A missing exact phrase alone does not prove that test. Demonstrate at least one qualifying example in the video.
+
+## Technical documentation
+
+### Research constellations and code notes
+
+Rendering reuses a full-resolution connection layer while hovering, caches up to 256 device-resolution thumbnail appearances, and coalesces drag/zoom updates into animation frames. All records, relationships, widths, and image detail remain available; no reduced-detail interaction mode is used. Caches invalidate when their source data or appearance changes.
+
+Scroll over the cloud to zoom proportionally from 0.25× to 8×; scrolling the sidebar still scrolls its controls. High zoom intentionally moves outer nodes beyond the viewport.
+
+Under **CONNECTIONS**, click a relationship name to open its width slider directly below that row (25–250% of the default). Checkboxes independently toggle visibility. **Reset line widths** restores every relationship type, including the existing 20% reduction for dotted lines. Width preferences apply for the current page session and do not change semantic scores, filters, or camera framing.
+
+The small color square in the same inline menu opens the browser's compact RGB color picker. A chosen color overrides only that relationship type; node/category colors are unchanged, and the legend sample updates. Original per-year/per-category line palettes remain in use until overridden. **Reset filters** also restores original line colors and legend labels, without changing custom widths. Reloading restores the original palettes too. The width-reset button affects widths only.
+
+The bottom-right legend explains each relationship. Posting-year links use blue/teal dash–dot strokes; category/advisor links use dots. Category links become solid when specific keywords also match; keyword links have their own pink solid lane. Semantic links appear on selection and remain violet/solid, with thickness encoding similarity within that type.
+
+**Research Constellations** groups full-dimensional thesis profiles using deterministic spherical k-means (up to seven exploratory groups). Labels are extracted title terms, not official categories. Filters retain full-corpus group assignments and update visible counts and median lengths. **Topic × Length** keeps those groups and encodes the selected page/word metric in point size and vertical position; longer documents sit higher in the initial orientation. Missing counts are excluded from medians and placed below the measured range. Rotation changes the screen orientation, not the metric.
+
+The project includes English inline explanations and a [code guide](CODE_GUIDE.md) describing each module, data flow, and limitations.
+
+### Setup
+
+Python 3.11+ is recommended. Run from the project folder:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python scripts\import_collection.py --limit 30
+python scripts\import_collection.py --all
+python scripts\enrich_documents.py
+python scripts\enrich_advisors.py
+python scripts\build_vectors.py
 python app.py
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in a browser.
+Open **http://127.0.0.1:8000**. Enrichment fetches public PDF figures, metrics, and advisors and may take several minutes. Original figures belong to the thesis authors; source links and figure provenance appear in the app.
 
-The first command imports catalogue metadata, abstracts, source links, and KiltHub preview images. To calculate page and word counts, run the optional enrichment pass:
+### Technology and limitations
+
+ChromaDB 1.5.9 persists passage vectors and averaged thesis profiles in `data/chroma_store/`. FastEmbed 0.9.0 runs `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` locally (384 dimensions). The first build downloads weights into `data/model-cache/`; no API key is required. SQLite stores editable metadata in `data/theses.db`. Adding, editing, and deleting records updates their vectors.
+
+The map uses a 3D PCA projection preserving about 21% of variation in this build, so visual distance is approximate. Recommendations use original vectors. Abstract similarity does not fully describe research scope. Advisor grouping uses the first listed advisor; filtering includes co-advisors.
+
+Do not commit PDFs, model caches, or generated databases. The commands above rebuild the collection from the public source; the importer implements the MSCD — Master of Science in Computational Design search filter.
+
+### Verification
 
 ```powershell
-python scripts\import_collection.py --limit 30 --with-document-metrics
+python -m unittest discover -s tests -v
+node --test tests/test_relations.mjs tests/test_orbit.mjs tests/test_constellations.mjs tests/test_line_widths.mjs tests/test_render_cache.mjs tests/test_zoom.mjs
 ```
 
-It downloads each public PDF temporarily and saves only the resulting page and word counts in SQLite. It may take several minutes, depending on the file sizes and internet connection. Add `--keep-pdf-cache` only if you intentionally want to retain the downloaded PDFs.
-
-## CRUD operations
-
-- **Create:** Select **+ Add Thesis**, fill in the form, and save the new record.
-- **Read:** Browse the orbit, hover over nodes, select a node for a detail panel, or search/filter the collection.
-- **Update:** Select a thesis, choose **Edit**, revise fields such as category, keywords, image, or summary, and save.
-- **Delete:** Select a thesis, choose **Delete**, and confirm the removal.
-
-The required user-controlled query is available through category, year, page-count, word-count, and text-search filters.
-
-## Data sources and limits
-
-The initial records come from the public [Master of Computational Design KiltHub collection](https://kilthub.cmu.edu/collections/_/5279693). The importer requests public metadata from the Figshare API that serves KiltHub. Source links remain visible in the detail panel so that a visitor can verify every record.
-
-Page and word counts are only as accurate as the PDF's embedded text. Scanned PDFs, visual diagrams, and unusual encodings can lead to a missing or approximate word count. A KiltHub preview is used initially as the small node image; it can be replaced in the edit form with a visually stronger project image chosen from the thesis PDF.
-
-## AI use and citations
-
-AI tools were used to help plan the SQLite schema, develop and debug the app, and draft short summaries from the source abstracts. Every AI summary should be reviewed against its original KiltHub abstract before submission. The original KiltHub page is retained for each record, and the development process is documented in [`prompt_log.md`](prompt_log.md).
+Tests cover semantic retrieval, persistence, runtime additions, API operations, metadata relations, and stable framing. Original abstracts and metadata come from KiltHub. Important prompts and development notes are recorded separately in `prompt_log.md`.

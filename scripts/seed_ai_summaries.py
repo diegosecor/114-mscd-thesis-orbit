@@ -137,6 +137,7 @@ RECORDS = {
 }
 
 
+# Apply the original curated seed drafts; rerunning intentionally overwrites those summaries.
 def main() -> None:
     if not DB_PATH.exists():
         raise SystemExit("Run scripts/import_collection.py before seeding summaries.")

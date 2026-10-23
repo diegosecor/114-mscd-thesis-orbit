@@ -3,44 +3,71 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="An interactive orbit of recent MSCD theses from KiltHub." />
-    <title>MSCD Thesis Orbit</title>
-    <link rel="stylesheet" href="styles.css" />
+    <meta name="description" content="Explore the length, research focus, and thematic landscape of public MSCD — Master of Science in Computational Design theses in an interactive 3D orbit." />
+    <title>CMU — MSCD — Master of Science in Computational Design Thesis Orbit</title>
+    <link rel="stylesheet" href="styles.css?v=20261022-line-colors-2" />
   </head>
   <body>
     <main class="app-shell">
+      <!-- JavaScript draws projected world-space nodes; overlays never resize this canvas. -->
       <canvas id="orbitCanvas" aria-label="Interactive thesis orbit visualization"></canvas>
+      <div class="metric-axis" id="metricAxis" hidden aria-live="polite">
+        <span id="metricAxisLow"></span><i></i><span id="metricAxisHigh"></span>
+      </div>
 
       <header class="top-bar">
         <a class="wordmark" href="/" aria-label="Reset visualization">
           <span class="wordmark-mark">◌</span>
-          <span>MSCD<br /><strong>THESIS ORBIT</strong></span>
+          <span>MSCD — <small>MASTER OF SCIENCE IN COMPUTATIONAL DESIGN</small><br /><strong>THESIS ORBIT</strong></span>
         </a>
         <label class="search-box">
           <span class="sr-only">Search theses</span>
-          <input id="searchInput" type="search" placeholder="SEARCH THE ARCHIVE" autocomplete="off" />
+          <input id="searchInput" type="search" placeholder="SEARCH RESEARCH IDEAS BY MEANING" autocomplete="off" />
           <span aria-hidden="true">⌕</span>
         </label>
         <button class="outline-button" id="openAddButton" type="button">+ ADD THESIS</button>
       </header>
 
+      <!-- Controls request filtered records; layout controls only change their presentation. -->
       <aside class="control-panel" aria-label="Visualization controls">
-        <p class="eyebrow">KILTHUB / MSCD</p>
+        <p class="eyebrow">KILTHUB / MSCD — MASTER OF SCIENCE IN COMPUTATIONAL DESIGN</p>
         <h1>RESEARCH<br />IN ORBIT</h1>
         <p class="panel-copy" id="recordCount">Loading collection...</p>
+        <p class="semantic-status" id="semanticStatus" role="status">Preparing semantic map…</p>
+        <h2 class="control-section-title">VIEW</h2>
+        <label><span>SEARCH MODE</span><select id="searchMode">
+          <option value="semantic">By meaning</option>
+          <option value="exact">Exact words</option>
+        </select></label>
+        <details id="searchResults" class="semantic-settings" open hidden>
+          <summary>MATCHES BY MEANING</summary>
+          <div id="searchResultsList" class="semantic-neighbors search-results-list"></div>
+        </details>
 
         <label>
           <span>ARRANGE BY</span>
           <select id="layoutSelect">
-            <option value="category">Category</option>
-            <option value="year">Year</option>
+            <option value="semantic">Semantic map</option>
+            <option value="constellations">Research constellations</option>
+            <option value="topicLength">Topic × length</option>
+            <option value="neighborhood">Selected thesis + neighbors</option>
+            <option value="advisor">Advisor groups</option>
+            <option value="category">Research categories</option>
+            <option value="cloud">Free 3D cloud</option>
+            <option value="year">Posting year</option>
             <option value="pages">Page count</option>
             <option value="words">Word count</option>
           </select>
+          <p class="layout-help" id="layoutHelp" aria-live="polite">Theses form category clusters; each point keeps its category colour.</p>
         </label>
 
+        <details id="constellationSummary" class="semantic-settings" hidden open>
+          <summary>RESEARCH CONSTELLATIONS</summary>
+          <p>Counts and median lengths for the current view. Missing values excluded; length is not research quality.</p>
+          <div id="constellationList"></div>
+        </details>
         <label>
-          <span>POINT SIZE</span>
+          <span>POINT SIZE BY</span>
           <select id="sizeSelect">
             <option value="equal">Equal</option>
             <option value="pages">Page count</option>
@@ -48,63 +75,128 @@
           </select>
         </label>
 
+        <h2 class="control-section-title">FILTERS</h2>
         <label>
           <span>CATEGORY</span>
           <select id="categoryFilter"><option value="">All categories</option></select>
         </label>
+        <label><span>THESIS ADVISOR</span>
+          <select id="advisorFilter"><option value="">All advisors</option></select>
+        </label>
 
-        <div class="range-block">
-          <span>YEAR</span>
-          <div class="range-row">
-            <input id="yearFilter" type="number" inputmode="numeric" placeholder="Any" min="2000" max="2100" />
+        <div class="range-block year-range-block">
+          <span>YEAR RANGE</span>
+          <div class="dual-range-slider" id="yearRangeControl" aria-label="Year range">
+            <div class="range-track"><span id="yearRangeFill"></span></div>
+            <output id="yearMinLabel" class="range-thumb-label">—</output>
+            <output id="yearMaxLabel" class="range-thumb-label">—</output>
+            <input id="yearMin" type="range" aria-label="Starting year" />
+            <input id="yearMax" type="range" aria-label="Ending year" />
           </div>
         </div>
 
         <div class="range-block">
           <span>PAGES</span>
-          <div class="range-row">
-            <input id="pageMin" type="number" inputmode="numeric" placeholder="Min" min="0" />
-            <input id="pageMax" type="number" inputmode="numeric" placeholder="Max" min="0" />
+          <div class="dual-range-slider" id="pageRangeControl" aria-label="Page count range">
+            <div class="range-track"><span id="pageRangeFill"></span></div>
+            <output id="pageMinLabel" class="range-thumb-label">—</output>
+            <output id="pageMaxLabel" class="range-thumb-label">—</output>
+            <input id="pageMin" type="range" aria-label="Minimum page count" />
+            <input id="pageMax" type="range" aria-label="Maximum page count" />
           </div>
         </div>
 
         <div class="range-block">
           <span>WORDS</span>
-          <div class="range-row">
-            <input id="wordMin" type="number" inputmode="numeric" placeholder="Min" min="0" />
-            <input id="wordMax" type="number" inputmode="numeric" placeholder="Max" min="0" />
+          <div class="dual-range-slider" id="wordRangeControl" aria-label="Word count range">
+            <div class="range-track"><span id="wordRangeFill"></span></div>
+            <output id="wordMinLabel" class="range-thumb-label">—</output>
+            <output id="wordMaxLabel" class="range-thumb-label">—</output>
+            <input id="wordMin" type="range" aria-label="Minimum word count" />
+            <input id="wordMax" type="range" aria-label="Maximum word count" />
           </div>
         </div>
 
         <button class="text-button" id="resetFilters" type="button">RESET FILTERS ↺</button>
+        <fieldset class="connection-controls">
+          <legend>CONNECTIONS</legend>
+          <p class="connection-hint">Check to show · Click text for style</p>
+          <div class="connection-row"><input type="checkbox" id="showSemantic" aria-label="Show meaning connections" checked /><button type="button" data-line-type="semantic" aria-expanded="false" aria-controls="lineWidthEditor">Similar abstract content</button></div>
+          <div class="connection-row"><input type="checkbox" id="showAdvisor" aria-label="Show shared advisor connections" /><button type="button" data-line-type="advisor" aria-expanded="false" aria-controls="lineWidthEditor">Shared thesis advisor</button></div>
+          <div class="connection-row"><input type="checkbox" id="showCategory" aria-label="Show shared category connections" checked /><button type="button" data-line-type="category" aria-expanded="false" aria-controls="lineWidthEditor">Same research category</button></div>
+          <div class="connection-row"><input type="checkbox" id="showYear" aria-label="Show same posting year connections" checked /><button type="button" data-line-type="year" aria-expanded="false" aria-controls="lineWidthEditor">Same posting year</button></div>
+          <div class="connection-row"><input type="checkbox" id="showKeywords" aria-label="Show shared keyword connections" checked /><button type="button" data-line-type="keywords" aria-expanded="false" aria-controls="lineWidthEditor">Shared keywords</button></div>
+          <!-- Width changes affect one connection type; reset restores all original widths. -->
+          <div id="lineWidthEditor" class="line-width-editor" hidden>
+            <div class="line-style-heading"><p id="lineWidthTitle"></p><input id="lineColorPicker" type="color" value="#7d25ff" aria-label="Connection line color" title="Choose a line color · point colors stay unchanged" /></div>
+            <label for="lineWidthSlider">Relative width <output id="lineWidthValue" for="lineWidthSlider">100%</output></label>
+            <input id="lineWidthSlider" type="range" min="25" max="250" step="5" value="100" />
+            <p>100% is the default. Semantic similarity differences remain visible.</p>
+            <button id="resetLineWidths" class="text-button" type="button">Reset line widths</button>
+          </div>
+        </fieldset>
+        <details class="semantic-settings">
+          <summary>RELATED THESIS SETTINGS</summary>
+          <p>Applies when a thesis is selected.</p>
+          <label><span>NUMBER OF NEIGHBORS <output id="neighborCountLabel">8</output></span>
+            <input type="range" id="neighborCount" min="1" max="20" value="8" step="1" />
+          </label>
+          <label><span>MINIMUM SIMILARITY <output id="similarityLabel">0.35</output></span>
+            <input type="range" id="similarityMin" min="0" max="0.95" value="0.35" step="0.01" />
+          </label>
+        </details>
+        <details class="semantic-settings">
+          <summary>CATEGORY COLORS</summary>
+          <div class="category-key" id="categoryKey" aria-label="Category colors"></div>
+        </details>
       </aside>
 
       <section class="visual-legend" aria-label="Legend">
-        <p><span class="legend-dot"></span>THESIS NODE</p>
-        <p><span class="legend-line"></span>SHARED THEME</p>
-        <p class="legend-tip">DRAG TO ORBIT · SCROLL TO ZOOM · SELECT A NODE</p>
+        <h2>CONNECTION KEY</h2>
+        <p><span class="legend-line semantic-line"></span><span data-legend-color="semantic">Semantic link</span> · similar abstracts</p>
+        <p class="legend-note">On selection · thicker = more similar</p>
+        <p><span class="legend-line category-line"></span><span data-legend-color="category">Category link</span> · shared research category</p>
+        <p class="legend-note">Dotted; solid if a keyword also matches</p>
+        <p><span class="legend-line year-line"></span><span data-legend-color="year">Year link</span> · same posting year</p>
+        <p><span class="legend-line keyword-line"></span><span data-legend-color="keywords">Keyword link</span> · shared specific keywords</p>
+        <p><span class="legend-line advisor-line"></span><span data-legend-color="advisor">Advisor link</span> · shared advisor, when enabled</p>
+        <p class="legend-note">Multiple lines = multiple relationships</p>
+        <p class="legend-tip">Drag to rotate · Scroll to zoom · Select a thesis</p>
       </section>
 
       <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
 
       <aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Selected thesis details">
         <button class="panel-close" id="closeDetailButton" type="button" aria-label="Close details">×</button>
-        <div class="detail-image-wrap"><img id="detailImage" alt="" /></div>
+        <div class="detail-image-wrap"><img id="detailImage" alt="" /><span id="imageFallback" hidden>No project figure available</span></div>
+        <p class="image-caption" id="imageSource"></p>
         <p class="eyebrow" id="detailCategory"></p>
         <h2 id="detailTitle"></h2>
         <p class="byline" id="detailByline"></p>
+        <section><h3>THESIS ADVISORS</h3><p id="detailAdvisors"></p>
+          <a id="advisorSource" class="advisor-source" target="_blank" rel="noreferrer" hidden>Advisor metadata source ↗</a>
+        </section>
+        <section id="searchEvidence" hidden><h3>WHY THIS SEARCH MATCHED</h3><p id="searchExcerpt"></p></section>
         <dl class="metrics">
           <div><dt>PAGES</dt><dd id="detailPages">—</dd></div>
           <div><dt>WORDS</dt><dd id="detailWords">—</dd></div>
           <div><dt>YEAR</dt><dd id="detailYear">—</dd></div>
         </dl>
+        <section><h3>NEAREST BY MEANING</h3>
+          <p id="neighborStatus">Select a thesis to find related research.</p>
+          <div id="semanticNeighbors" class="semantic-neighbors"></div>
+        </section>
         <section>
-          <h3>AI SUMMARY</h3>
+          <h3 id="summaryHeading">AI SUMMARY</h3>
           <p id="detailSummary"></p>
         </section>
         <section>
           <h3>KEYWORDS</h3>
           <p class="keywords" id="detailKeywords"></p>
+        </section>
+        <section>
+          <h3>CONNECTIONS IN THIS VIEW</h3>
+          <p id="detailConnections"></p>
         </section>
         <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noreferrer">OPEN IN KILTHUB ↗</a>
         <div class="detail-actions">
@@ -122,6 +214,7 @@
           <h2 id="dialogTitle">Add a thesis</h2>
           <div class="form-grid">
             <label class="full"><span>TITLE *</span><input name="title" required /></label>
+            <label class="full"><span>ADVISORS (COMMA SEPARATED)</span><input name="advisors" /></label>
             <label><span>AUTHOR</span><input name="author" /></label>
             <label><span>YEAR</span><input name="year" type="number" min="1900" max="2100" /></label>
             <label><span>CATEGORY</span><input name="category" placeholder="e.g. AI + Generative Design" /></label>
@@ -129,9 +222,9 @@
             <label><span>PAGES</span><input name="page_count" type="number" min="0" /></label>
             <label><span>WORDS</span><input name="word_count" type="number" min="0" /></label>
             <label class="full"><span>KILTHUB / SOURCE URL</span><input name="source_url" type="url" /></label>
-            <label class="full"><span>IMAGE URL</span><input name="image_url" type="url" /></label>
+            <label class="full"><span>IMAGE URL OR LOCAL PATH</span><input name="image_url" /></label>
             <label class="full"><span>AI SUMMARY</span><textarea name="ai_summary" rows="4"></textarea></label>
-            <label class="full"><span>ORIGINAL ABSTRACT</span><textarea name="source_abstract" rows="4"></textarea></label>
+            <label class="full"><span>ORIGINAL ABSTRACT / DESCRIPTION · USED FOR SEMANTIC SEARCH</span><textarea name="source_abstract" rows="4" required></textarea></label>
           </div>
           <p class="form-error" id="formError" role="alert"></p>
           <div class="form-actions">
@@ -141,6 +234,6 @@
         </form>
       </dialog>
     </main>
-    <script src="app.js"></script>
+    <script type="module" src="app.js?v=20261022-reset-colors-3"></script>
   </body>
 </html>
