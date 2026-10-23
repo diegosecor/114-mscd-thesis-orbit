@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 tmp/
+server*.log
 data/theses.db
 data/pdf-cache/
 data/image-cache/
